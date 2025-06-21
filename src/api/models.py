@@ -145,10 +145,13 @@ class MedicalFile(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     user = relationship("User", back_populates="medical_file", foreign_keys=[user_id])
 
+
+    file_status = db.Column(Enum(FileStatus), default=FileStatus.empty, nullable=False)
+
+
     selected_student_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     selected_student = relationship("User", foreign_keys=[selected_student_id])
 
-    file_status = db.Column(Enum(FileStatus), default=FileStatus.empty, nullable=False)
 
     progressed_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     progressed_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -167,18 +170,20 @@ class MedicalFile(db.Model):
 
     no_confirmed_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     no_confirmed_at = db.Column(db.DateTime)
-
-    non_pathological_background = relationship("NonPathologicalBackground", uselist=False, back_populates="medical_file")
-    pathological_background = relationship("PathologicalBackground", uselist=False, back_populates="medical_file")
-    family_background = relationship("FamilyBackground", uselist=False, back_populates="medical_file")
-    gynecological_background = relationship("GynecologicalBackground", uselist=False, back_populates="medical_file")
-
+    
     progressed_by = relationship("User", foreign_keys=[progressed_by_id])
     reviewed_by = relationship("User", foreign_keys=[reviewed_by_id])
     approved_by = relationship("User", foreign_keys=[approved_by_id])
     no_approved_by = relationship("User", foreign_keys=[no_approved_by_id])
     confirmed_by = relationship("User", foreign_keys=[confirmed_by_id])
     no_confirmed_by = relationship("User", foreign_keys=[no_confirmed_by_id])
+
+    non_pathological_background = relationship("NonPathologicalBackground", uselist=False, back_populates="medical_file")
+    pathological_background = relationship("PathologicalBackground", uselist=False, back_populates="medical_file")
+    family_background = relationship("FamilyBackground", uselist=False, back_populates="medical_file")
+    gynecological_background = relationship("GynecologicalBackground", uselist=False, back_populates="medical_file")
+
+
 
     def serialize(self):
         return {
@@ -212,7 +217,6 @@ class NonPathologicalBackground(db.Model):
     medical_file_id = db.Column(db.Integer, db.ForeignKey('medical_file.id'), nullable=False)
     medical_file = relationship("MedicalFile", back_populates="non_pathological_background")
 
-    origin = db.Column(db.String(120))
     sex = db.Column(db.String(20))
     nationality = db.Column(db.String(80))
     ethnic_group = db.Column(db.String(80))
@@ -271,7 +275,6 @@ class NonPathologicalBackground(db.Model):
         return {
             "id": self.id,
             "medical_file_id": self.medical_file_id,
-            "origin": self.origin,
             "sex": self.sex,
             "nationality": self.nationality,
             "ethnic_group": self.ethnic_group,

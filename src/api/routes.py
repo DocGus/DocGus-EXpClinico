@@ -5,8 +5,9 @@ from flask import Flask, request, jsonify, url_for, Blueprint
 from api.models import db, User, ProfessionalStudentData, MedicalFile, FileStatus
 from api.utils import generate_sitemap, APIException
 from flask_cors import CORS
-from werkzeug.security import generate_password_hash
-from datetime import datetime
+from werkzeug.security import generate_password_hash, check_password_hash
+from datetime import datetime, timedelta
+from flask_jwt_extended import create_access_token
 
 
 api = Blueprint('api', __name__)
@@ -77,3 +78,20 @@ def register_user():
     except Exception as e:
         db.session.rollback()
         return jsonify({"message": f"Error en el servidor: {str(e)}"}), 500
+
+# LOGIN
+@api.route('/login', methods=['POST'])
+def login():
+    data = request.get_json()
+    email = data.get("email")
+    password = data.get("password")
+
+    user = User.query.filter_by(email=email).first()
+    if not user or not check_password_hash(user.password, password):
+        raise APIException("Credenciales inválidas", status_code=401)
+                                                                                                # Asegúrate de que identity sea string
+    access_token = create_access_token(                                                         # Genera un token JWT con exp de 1 hora
+
+        identity=str(user.id), expires_delta=timedelta(hours=1))
+
+    return jsonify({"token": access_token, "user": user.serialize()}), 200
