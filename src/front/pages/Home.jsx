@@ -75,13 +75,13 @@ export const Home = () => {
           {/* Botones de registro */}
           <div className="text-center mt-5">
             <div className="d-flex justify-content-center flex-wrap gap-3">
-              <Link to="/register?rol=professional" className="btn btn-light btn-lg text-dark">
+              <Link to="/register?role=professional" className="btn btn-light btn-lg text-dark">
                 Registro Profesional
               </Link>
-              <Link to="/register?rol=student" className="btn btn-light btn-lg text-dark">
+              <Link to="/register?role=student" className="btn btn-light btn-lg text-dark">
                 Registro Estudiante
               </Link>
-              <Link to="/register?rol=patient" className="btn btn-light btn-lg text-dark">
+              <Link to="/register?role=patient" className="btn btn-light btn-lg text-dark">
                 Registro Paciente
               </Link>
             </div>

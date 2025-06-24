@@ -2,12 +2,12 @@
 This module takes care of starting the API Server, Loading the DB and Adding the endpoints
 """
 from flask import Flask, request, jsonify, url_for, Blueprint
-from api.models import db, User, ProfessionalStudentData, MedicalFile, FileStatus
+from api.models import db, User, ProfessionalStudentData, MedicalFile, FileStatus, UserRole, UserStatus
 from api.utils import generate_sitemap, APIException
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
-from flask_jwt_extended import create_access_token
+from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_required
 
 
 api = Blueprint('api', __name__)
@@ -79,7 +79,7 @@ def register_user():
         db.session.rollback()
         return jsonify({"message": f"Error en el servidor: {str(e)}"}), 500
 
-# LOGIN
+# 02 LOGIN
 @api.route('/login', methods=['POST'])
 def login():
     data = request.get_json()
@@ -95,3 +95,87 @@ def login():
         identity=str(user.id), expires_delta=timedelta(hours=1))
 
     return jsonify({"token": access_token, "user": user.serialize()}), 200
+
+
+
+# 03 EPT para RUTA PROTEGIDA
+@api.route('/private', methods=['GET'])
+@jwt_required()
+def private():
+    current_user_id = get_jwt_identity()
+    user = User.query.get(current_user_id)
+    return jsonify({"msg": "Acceso autorizado", "user": user.serialize()}), 200
+
+
+
+
+
+
+
+# 04 EPT para obtener información de TODOS los usuarios (solo para administradores)
+@api.route('/users', methods=['GET'])
+@jwt_required()
+def get_users():
+    current_user_id = get_jwt_identity()
+    current_user = User.query.get(current_user_id)
+
+    if not current_user or current_user.role.value != "admin":
+        raise APIException("Acceso no autorizado", status_code=403)
+
+    users = User.query.all()
+    return jsonify([user.serialize() for user in users]), 200
+
+
+
+
+from functools import wraps
+from flask_jwt_extended import get_jwt_identity
+
+def admin_required(fn):
+    @wraps(fn)
+    @jwt_required()
+    def wrapper(*args, **kwargs):
+        current_user_id = get_jwt_identity()
+        user = User.query.get(current_user_id)
+        if not user or user.role.value != "admin":
+            raise APIException("Acceso no autorizado", status_code=403)
+        return fn(*args, **kwargs)
+    return wrapper
+
+@api.route('/api/user/<int:user_id>/approve', methods=['PUT'])
+@admin_required  # Solo el admin puede aprobar
+def approve_user(user_id):
+    user = User.query.get(user_id)
+    if not user or user.role != "professional":
+        return jsonify({"error": "Usuario no encontrado o no es profesional"}), 400
+
+    user.status = "approved"
+    db.session.commit()
+    return jsonify({"message": "Usuario aprobado", "user": user.serialize()}), 200
+
+
+
+
+# 05 EPT para que el admin valide al usuario professional
+@api.route('/validate_professional/<int:user_id>', methods=['POST'])
+@admin_required
+def validate_professional(user_id):
+    current_user_id = get_jwt_identity()
+    current_user = User.query.get(current_user_id)
+
+    user = User.query.get(user_id)
+    if not user or user.role != UserRole.professional or user.status != UserStatus.pre_approved:
+        return jsonify({"error": "Usuario no válido"}), 400
+
+    data = ProfessionalStudentData.query.filter_by(user_id=user_id).first()
+    if not data:
+        return jsonify({"error": "Faltan datos profesionales"}), 400
+
+    # Validar datos manualmente si hace falta (ej. campos vacíos)
+
+    data.validated_by_id = current_user.id  # quien valida
+    data.validated_at = datetime.utcnow()
+    user.status = UserStatus.approved
+
+    db.session.commit()
+    return jsonify({"message": "Profesional validado exitosamente"}), 200

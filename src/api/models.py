@@ -91,7 +91,7 @@ class User(db.Model):
 
 
     professional_student_data: Mapped["ProfessionalStudentData"] = relationship(
-        "ProfessionalStudentData", back_populates="user", uselist=False, cascade="all, delete-orphan"
+        "ProfessionalStudentData", back_populates="user", uselist=False, cascade="all, delete-orphan", foreign_keys="[ProfessionalStudentData.user_id]"
     )
     medical_file: Mapped["MedicalFile"] = relationship(
         "MedicalFile", back_populates="user", foreign_keys="[MedicalFile.user_id]", uselist=False, cascade="all, delete-orphan"
@@ -125,7 +125,15 @@ class ProfessionalStudentData(db.Model):
     academic_grade: Mapped[AcademicGrade] = mapped_column(Enum(AcademicGrade), nullable=False)
     register_number: Mapped[str] = mapped_column(String(30), nullable=False)
 
-    user: Mapped["User"] = relationship("User", back_populates="professional_student_data", uselist=False)
+    validated_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=True)
+    validated_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+
+    user: Mapped["User"] = relationship("User", back_populates="professional_student_data", uselist=False, foreign_keys=[user_id])
+    validated_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=True)
+    validated_by: Mapped["User"] = relationship(
+    "User",
+    foreign_keys=[validated_by_id]
+    )
 
     def serialize(self):
         return {
@@ -134,7 +142,9 @@ class ProfessionalStudentData(db.Model):
             "institution": self.institution,
             "career": self.career,
             "academic_grade": self.academic_grade.value,
-            "register_number": self.register_number
+            "register_number": self.register_number,
+            "validated_by_id": self.approved_by_id,
+            "validated_at": serialize_datetime(self.validated_at)
         }
 
 # -------------------- MODELO: MEDICAL FILE --------------------

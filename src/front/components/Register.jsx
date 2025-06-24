@@ -1,11 +1,11 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 const Register = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const queryParams = new URLSearchParams(location.search);
-  const roleFromURL = queryParams.get("rol") || "";
+  const roleFromURL = queryParams.get("role") || "";
 
   const [formData, setFormData] = useState({
     first_name: "",
@@ -26,6 +26,11 @@ const Register = () => {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
+  // Si quieres que el rol se actualice si cambia la URL (opcional)
+  useEffect(() => {
+    setFormData(prev => ({ ...prev, role: roleFromURL }));
+  }, [roleFromURL]);
+
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
@@ -35,6 +40,19 @@ const Register = () => {
     e.preventDefault();
     setError("");
     setSuccess("");
+
+    // Validaciones básicas
+    if (!formData.first_name || !formData.first_surname || !formData.birth_day || !formData.email || !formData.password || !formData.role) {
+      setError("Por favor llena todos los campos obligatorios.");
+      return;
+    }
+
+    if (formData.role === "professional" || formData.role === "student") {
+      if (!formData.institution || !formData.career || !formData.academic_grade || !formData.register_number) {
+        setError("Por favor llena todos los campos académicos obligatorios.");
+        return;
+      }
+    }
 
     try {
       const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/register`, {
@@ -69,6 +87,7 @@ const Register = () => {
 
         <form onSubmit={handleSubmit}>
           <div className="row g-3">
+            {/* Campos básicos */}
             {[
               { label: "Primer Nombre", name: "first_name", type: "text", required: true },
               { label: "Segundo Nombre", name: "second_name", type: "text" },
@@ -78,47 +97,89 @@ const Register = () => {
               { label: "Teléfono", name: "phone", type: "tel" },
               { label: "Correo Electrónico", name: "email", type: "email", required: true },
               { label: "Contraseña", name: "password", type: "password", required: true },
-              ...(roleFromURL === "profesional" || roleFromURL === "estudiante" ? [
-                { label: "Institución", name: "institution", type: "text", required: true },
-                { label: "Carrera", name: "career", type: "text", required: true },
-                {
-                  label: "Grado Académico", name: "academic_grade", type: "select", options: [
-                    "no_formal_education", "elementary_school", "middle_school", "high_school",
-                    "technical", "bachelor", "postgraduate_studies"
-                  ], required: true
-                },
-                { label: "Número de Registro", name: "register_number", type: "text", required: true },
-              ] : [])
             ].map(field => (
               <div className="col-12 col-md-6 col-lg-4" key={field.name}>
                 <label className="form-label text-white">{field.label}</label>
-                {field.type === "select" ? (
+                <input
+                  type={field.type}
+                  name={field.name}
+                  className="form-control"
+                  style={inputStyle}
+                  value={formData[field.name]}
+                  onChange={handleChange}
+                  required={field.required}
+                />
+              </div>
+            ))}
+
+            {/* Campos académicos sólo para professional y student */}
+            {(formData.role === "professional" || formData.role === "student") && (
+              <>
+                <div className="col-12 col-md-6 col-lg-4">
+                  <label className="form-label text-white">Institución</label>
+                  <input
+                    type="text"
+                    name="institution"
+                    className="form-control"
+                    style={inputStyle}
+                    value={formData.institution}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+
+                <div className="col-12 col-md-6 col-lg-4">
+                  <label className="form-label text-white">Carrera</label>
+                  <input
+                    type="text"
+                    name="career"
+                    className="form-control"
+                    style={inputStyle}
+                    value={formData.career}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+
+                <div className="col-12 col-md-6 col-lg-4">
+                  <label className="form-label text-white">Grado Académico</label>
                   <select
-                    name={field.name}
+                    name="academic_grade"
                     className="form-select"
                     style={inputStyle}
-                    value={formData[field.name]}
+                    value={formData.academic_grade}
                     onChange={handleChange}
-                    required={field.required}
+                    required
                   >
-                    <option value="">Selecciona</option>
-                    {field.options.map(opt => (
+                    <option value="" disabled hidden>Selecciona</option>
+                    {[
+                      "no_formal_education",
+                      "elementary_school",
+                      "middle_school",
+                      "high_school",
+                      "technical",
+                      "bachelor",
+                      "postgraduate_studies"
+                    ].map(opt => (
                       <option key={opt} value={opt}>{opt}</option>
                     ))}
                   </select>
-                ) : (
+                </div>
+
+                <div className="col-12 col-md-6 col-lg-4">
+                  <label className="form-label text-white">Número de Registro</label>
                   <input
-                    type={field.type}
-                    name={field.name}
+                    type="text"
+                    name="register_number"
                     className="form-control"
                     style={inputStyle}
-                    value={formData[field.name]}
+                    value={formData.register_number}
                     onChange={handleChange}
-                    required={field.required}
+                    required
                   />
-                )}
-              </div>
-            ))}
+                </div>
+              </>
+            )}
           </div>
 
           {error && <div className="alert alert-danger mt-4">{error}</div>}
