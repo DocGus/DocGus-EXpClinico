@@ -50,27 +50,29 @@ const UsersTable = () => {
     }
   };
 
-  const handleApprove = async (userId) => {
-    try {
-      const response = await fetch(`${backendUrl}/api/user/${userId}/approve`, {
-        method: 'PUT',
-        headers: {
-          "Authorization": `Bearer ${localStorage.getItem('token')}`,
-          "Content-Type": "application/json"
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error('No se pudo aprobar al usuario');
+const handleApprove = async (userId) => {
+  try {
+    const response = await fetch(`${backendUrl}/api/validate_professional/${userId}`, {
+      method: 'POST',
+      headers: {
+        "Authorization": `Bearer ${localStorage.getItem('token')}`,
+        "Content-Type": "application/json"
       }
+    });
 
-      setUsers(users.map(user =>
-        user.id === userId ? { ...user, status: "approved" } : user
-      ));
-    } catch (error) {
-      console.error('Error aprobando usuario:', error);
+    if (!response.ok) {
+      throw new Error('No se pudo validar al profesional');
     }
-  };
+
+    // Actualizar status localmente
+    setUsers(users.map(user =>
+      user.id === userId ? { ...user, status: "approved" } : user
+    ));
+  } catch (error) {
+    console.error('Error validando profesional:', error);
+  }
+};
+
 
   return (
     <table className="table table-hover">
