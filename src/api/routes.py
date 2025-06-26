@@ -142,6 +142,42 @@ def admin_required(fn):
         return fn(*args, **kwargs)
     return wrapper
 
+def student_required(fn):
+    @wraps(fn)
+    @jwt_required()
+    def wrapper(*args, **kwargs):
+        current_user_id = get_jwt_identity()
+        user = User.query.get(current_user_id)
+        # Permitir tanto UserRole.student como string "student"
+        if not user or (hasattr(user.role, "value") and user.role.value != "student") and user.role != "student":
+            raise APIException("Acceso no autorizado", status_code=403)
+        return fn(*args, **kwargs)
+    return wrapper
+
+def professional_required(fn):
+    @wraps(fn)
+    @jwt_required()
+    def wrapper(*args, **kwargs):
+        current_user_id = get_jwt_identity()
+        user = User.query.get(current_user_id)
+        # Permitir tanto UserRole.professional como string "professional"
+        if not user or (hasattr(user.role, "value") and user.role.value != "professional") and user.role != "professional":
+            raise APIException("Acceso no autorizado", status_code=403)
+        return fn(*args, **kwargs)
+    return wrapper
+
+def patient_required(fn):
+    @wraps(fn)
+    @jwt_required()
+    def wrapper(*args, **kwargs):
+        current_user_id = get_jwt_identity()
+        user = User.query.get(current_user_id)
+        # Permitir tanto UserRole.patient como string "patient"
+        if not user or (hasattr(user.role, "value") and user.role.value != "patient") and user.role != "patient":
+            raise APIException("Acceso no autorizado", status_code=403)
+        return fn(*args, **kwargs)
+    return wrapper
+
 @api.route('/api/user/<int:user_id>/approve', methods=['PUT'])
 @admin_required  # Solo el admin puede aprobar
 def approve_user(user_id):
@@ -179,3 +215,162 @@ def validate_professional(user_id):
 
     db.session.commit()
     return jsonify({"message": "Profesional validado exitosamente"}), 200
+
+# 06 EPT para que el estudiante solicite validación a un profesional
+@api.route('/request_student_validation/<int:professional_id>', methods=['POST'])
+@student_required
+def request_professional_validation(professional_id):
+    current_user_id = get_jwt_identity()
+    current_user = User.query.get(current_user_id)
+
+    if current_user.status != UserStatus.pre_approved:
+        return jsonify({"error": "Solo los estudiantes en estado pre_approved pueden solicitar validación"}), 400
+
+    professional = User.query.get(professional_id)
+
+    if not professional or professional.role != UserRole.professional or professional.status != UserStatus.approved:
+        return jsonify({"error": "El profesional no existe o no está aprobado"}), 400
+
+    student_data = ProfessionalStudentData.query.filter_by(user_id=current_user.id).first()
+
+    if not student_data:
+        return jsonify({"error": "Faltan los datos profesionales del estudiante"}), 400
+
+    # Guardar la solicitud
+    student_data.requested_professional_id = professional.id
+    student_data.requested_at = datetime.utcnow()
+
+    db.session.commit()
+
+    return jsonify({"message": "Solicitud de validación enviada exitosamente"}), 200
+
+
+
+# 07 EPT para que el profesional valide al estudiante
+@api.route('/professional/validate_student/<int:student_id>', methods=['PUT'])
+@professional_required
+def validate_student(student_id):
+    current_user_id = get_jwt_identity()
+    current_professional = User.query.get(current_user_id)
+
+    student = User.query.get(student_id)
+    if not student or student.role != UserRole.student:
+        return jsonify({"error": "El usuario no es un estudiante válido"}), 400
+
+    if student.status != UserStatus.pre_approved:
+        return jsonify({"error": "El estudiante no está en estado pre_approved"}), 400
+
+    student_data = ProfessionalStudentData.query.filter_by(user_id=student.id).first()
+    if not student_data:
+        return jsonify({"error": "El estudiante no tiene datos profesionales registrados"}), 400
+
+    # Verificar que la solicitud sea para este profesional
+    if student_data.requested_professional_id != current_professional.id:
+        return jsonify({"error": "Este estudiante no te ha solicitado validación a ti"}), 403
+
+    data = request.get_json()
+    action = data.get("action")
+
+    if action not in ["approve", "reject"]:
+        return jsonify({"error": "Acción no válida. Usa 'approve' o 'reject'"}), 400
+
+    if action == "approve":
+        student.status = UserStatus.approved
+        student_data.validated_by_id = current_professional.id
+        student_data.validated_at = datetime.utcnow()
+        # Limpiar solicitud ya resuelta
+        student_data.requested_professional_id = None
+        student_data.requested_at = None
+        db.session.commit()
+        return jsonify({"message": "Estudiante aprobado exitosamente"}), 200
+
+    elif action == "reject":
+        student_data.requested_professional_id = None
+        student_data.requested_at = None
+        db.session.commit()
+        return jsonify({"message": "Solicitud de validación rechazada"}), 200
+
+
+# 08 Paciente solicita a un estudiante llenar su expediente
+@api.route('/patient/request_student_validation/<int:student_id>', methods=['POST'])
+@patient_required
+def request_student_validation(student_id):
+    current_user_id = get_jwt_identity()
+    patient = User.query.get(current_user_id)
+    student = User.query.get(student_id)
+
+    if not student or student.role != UserRole.student or student.status != UserStatus.approved:
+        return jsonify({"error": "El estudiante no existe o no está aprobado"}), 400
+
+    # Buscar o crear el expediente médico del paciente
+    medical_file = MedicalFile.query.filter_by(user_id=patient.id).first()
+
+    if not medical_file:
+        medical_file = MedicalFile(user_id=patient.id)
+        db.session.add(medical_file)
+
+    # Validar que el paciente no tenga ya una solicitud pendiente
+    if medical_file.patient_requested_student_id:
+        return jsonify({"error": "Ya tienes una solicitud pendiente a un estudiante"}), 400
+
+    # Guardar la solicitud
+    medical_file.patient_requested_student_id = student.id
+    medical_file.patient_requested_student_at = datetime.utcnow()
+
+    db.session.commit()
+
+    return jsonify({"message": "Solicitud de validación enviada exitosamente al estudiante"}), 200
+
+# 09 Estudiante acepta llenar el expediente del paciente
+# Esta ruta es llamada por el estudiante cuando acepta la solicitud del paciente
+@api.route('/student/validate_patient/<int:patient_id>', methods=['PUT'])
+@student_required
+def validate_patient_request(patient_id):
+    current_user_id = get_jwt_identity()
+    student = User.query.get(current_user_id)
+
+    if not student or student.role != UserRole.student or student.status != UserStatus.approved:
+        return jsonify({"error": "El usuario actual no es un estudiante aprobado"}), 403
+
+    patient = User.query.get(patient_id)
+    if not patient or patient.role != UserRole.patient:
+        return jsonify({"error": "El paciente no existe o no tiene el rol correcto"}), 400
+
+    medical_file = MedicalFile.query.filter_by(user_id=patient.id).first()
+    if not medical_file:
+        return jsonify({"error": "El paciente no tiene expediente médico"}), 404
+
+    # Validar que la solicitud sea para este estudiante
+    if medical_file.patient_requested_student_id != student.id:
+        return jsonify({"error": "Este paciente no te ha solicitado validación"}), 403
+
+    data = request.get_json()
+    action = data.get("action")
+
+    if action not in ["approve", "reject"]:
+        return jsonify({"error": "Acción no válida. Usa 'approve' o 'reject'"}), 400
+
+    if action == "approve":
+        medical_file.student_validated_patient_id = student.id
+        medical_file.student_validated_patient_at = datetime.utcnow()
+
+        # Limpiamos la solicitud pendiente
+        medical_file.patient_requested_student_id = None
+        medical_file.patient_requested_student_at = None
+
+        # Asignamos formalmente al estudiante al expediente
+        medical_file.selected_student_id = student.id
+
+        db.session.commit()
+        return jsonify({"message": "Paciente validado exitosamente"}), 200
+
+    elif action == "reject":
+        medical_file.student_rejected_patient_id = student.id
+        medical_file.student_rejected_patient_at = datetime.utcnow()
+
+        # Limpiamos la solicitud pendiente
+        medical_file.patient_requested_student_id = None
+        medical_file.patient_requested_student_at = None
+
+        db.session.commit()
+        return jsonify({"message": "Solicitud del paciente rechazada"}), 200

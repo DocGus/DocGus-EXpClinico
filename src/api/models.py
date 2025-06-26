@@ -118,21 +118,55 @@ class User(db.Model):
 # -------------------- MODELO: ProfesionalStudent DATA --------------------
 class ProfessionalStudentData(db.Model):
     __tablename__ = "professional_student_data"
+    
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, unique=True)
+    
     institution: Mapped[str] = mapped_column(String(100), nullable=False)
     career: Mapped[str] = mapped_column(String(100), nullable=False)
     academic_grade: Mapped[AcademicGrade] = mapped_column(Enum(AcademicGrade), nullable=False)
     register_number: Mapped[str] = mapped_column(String(30), nullable=False)
 
-    validated_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=True)
-    validated_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
-
-    user: Mapped["User"] = relationship("User", back_populates="professional_student_data", uselist=False, foreign_keys=[user_id])
-    validated_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=True)
+    # -------- VALIDACIÓN DEL ADMIN AL PROFESSIONAL --------
+    validated_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=True)  # Admin que valida al Professional
+    validated_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)               # Fecha validación Professional
+    
     validated_by: Mapped["User"] = relationship(
-    "User",
-    foreign_keys=[validated_by_id]
+        "User",
+        foreign_keys=[validated_by_id]
+    )
+
+    # -------- VALIDACIÓN DEL PROFESSIONAL AL STUDENT --------
+    requested_professional_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=True)  # Professional al que el Student le pide validación
+    requested_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)                        # Cuándo solicitó
+
+    approved_by_professional_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=True) # Professional que aprueba al Student
+    approved_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)                          # Cuándo aprobó
+
+    rejected_by_professional_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=True) # Si es rechazado
+    rejected_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)                          # Cuándo rechazó
+
+    requested_professional: Mapped["User"] = relationship(
+        "User",
+        foreign_keys=[requested_professional_id]
+    )
+
+    approved_by_professional: Mapped["User"] = relationship(
+        "User",
+        foreign_keys=[approved_by_professional_id]
+    )
+
+    rejected_by_professional: Mapped["User"] = relationship(
+        "User",
+        foreign_keys=[rejected_by_professional_id]
+    )
+
+    # -------- RELACIÓN CON EL USUARIO --------
+    user: Mapped["User"] = relationship(
+        "User",
+        back_populates="professional_student_data",
+        uselist=False,
+        foreign_keys=[user_id]
     )
 
     def serialize(self):
@@ -143,8 +177,20 @@ class ProfessionalStudentData(db.Model):
             "career": self.career,
             "academic_grade": self.academic_grade.value,
             "register_number": self.register_number,
-            "validated_by_id": self.approved_by_id,
-            "validated_at": serialize_datetime(self.validated_at)
+
+            # Admin que valida Professional
+            "validated_by_id": self.validated_by_id,
+            "validated_at": serialize_datetime(self.validated_at),
+
+            # Student solicitando validación
+            "requested_professional_id": self.requested_professional_id,
+            "requested_at": serialize_datetime(self.requested_at),
+
+            # Professional que aprueba/rechaza al Student
+            "approved_by_professional_id": self.approved_by_professional_id,
+            "approved_at": serialize_datetime(self.approved_at),
+            "rejected_by_professional_id": self.rejected_by_professional_id,
+            "rejected_at": serialize_datetime(self.rejected_at),
         }
 
 # -------------------- MODELO: MEDICAL FILE --------------------
@@ -155,14 +201,26 @@ class MedicalFile(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     user = relationship("User", back_populates="medical_file", foreign_keys=[user_id])
 
-
     file_status = db.Column(Enum(FileStatus), default=FileStatus.empty, nullable=False)
-
 
     selected_student_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     selected_student = relationship("User", foreign_keys=[selected_student_id])
 
+    # ---------- Solicitud del paciente hacia un estudiante ----------
+    patient_requested_student_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    patient_requested_student_at = db.Column(db.DateTime, nullable=True)
+    patient_requested_student = relationship("User", foreign_keys=[patient_requested_student_id])
 
+    # ---------- Resultado de la validación por el estudiante ----------
+    student_validated_patient_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    student_validated_patient_at = db.Column(db.DateTime, nullable=True)
+    student_validated_patient = relationship("User", foreign_keys=[student_validated_patient_id])
+
+    student_rejected_patient_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    student_rejected_patient_at = db.Column(db.DateTime, nullable=True)
+    student_rejected_patient = relationship("User", foreign_keys=[student_rejected_patient_id])
+
+    # ---------- Flujo del expediente ----------
     progressed_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     progressed_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -180,7 +238,8 @@ class MedicalFile(db.Model):
 
     no_confirmed_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     no_confirmed_at = db.Column(db.DateTime)
-    
+
+    # ---------- Relaciones de usuarios para cada estado ----------
     progressed_by = relationship("User", foreign_keys=[progressed_by_id])
     reviewed_by = relationship("User", foreign_keys=[reviewed_by_id])
     approved_by = relationship("User", foreign_keys=[approved_by_id])
@@ -188,12 +247,11 @@ class MedicalFile(db.Model):
     confirmed_by = relationship("User", foreign_keys=[confirmed_by_id])
     no_confirmed_by = relationship("User", foreign_keys=[no_confirmed_by_id])
 
+    # ---------- Relaciones con antecedentes ----------
     non_pathological_background = relationship("NonPathologicalBackground", uselist=False, back_populates="medical_file")
     pathological_background = relationship("PathologicalBackground", uselist=False, back_populates="medical_file")
     family_background = relationship("FamilyBackground", uselist=False, back_populates="medical_file")
     gynecological_background = relationship("GynecologicalBackground", uselist=False, back_populates="medical_file")
-
-
 
     def serialize(self):
         return {
@@ -201,6 +259,12 @@ class MedicalFile(db.Model):
             "user_id": self.user_id,
             "file_status": self.file_status.name if self.file_status else None,
             "selected_student_id": self.selected_student_id,
+            "patient_requested_student_id": self.patient_requested_student_id,
+            "patient_requested_student_at": serialize_datetime(self.patient_requested_student_at),
+            "student_validated_patient_id": self.student_validated_patient_id,
+            "student_validated_patient_at": serialize_datetime(self.student_validated_patient_at),
+            "student_rejected_patient_id": self.student_rejected_patient_id,
+            "student_rejected_patient_at": serialize_datetime(self.student_rejected_patient_at),
             "progressed_by_id": self.progressed_by_id,
             "progressed_at": serialize_datetime(self.progressed_at),
             "reviewed_by_id": self.reviewed_by_id,
@@ -218,6 +282,9 @@ class MedicalFile(db.Model):
             "family_background": self.family_background.serialize() if self.family_background else None,
             "gynecological_background": self.gynecological_background.serialize() if self.gynecological_background else None,
         }
+
+
+        
 
 # -------------------- MODELO: NonPathologicalBackground --------------------
 class NonPathologicalBackground(db.Model):
