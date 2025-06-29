@@ -50,29 +50,27 @@ const UsersTable = () => {
     }
   };
 
-const handleApprove = async (userId) => {
-  try {
-    const response = await fetch(`${backendUrl}/api/validate_professional/${userId}`, {
-      method: 'POST',
-      headers: {
-        "Authorization": `Bearer ${localStorage.getItem('token')}`,
-        "Content-Type": "application/json"
+  const handleApprove = async (userId) => {
+    try {
+      const response = await fetch(`${backendUrl}/api/validate_professional/${userId}`, {
+        method: 'POST',
+        headers: {
+          "Authorization": `Bearer ${localStorage.getItem('token')}`,
+          "Content-Type": "application/json"
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('No se pudo validar al profesional');
       }
-    });
 
-    if (!response.ok) {
-      throw new Error('No se pudo validar al profesional');
+      setUsers(users.map(user =>
+        user.id === userId ? { ...user, status: "approved" } : user
+      ));
+    } catch (error) {
+      console.error('Error validando profesional:', error);
     }
-
-    // Actualizar status localmente
-    setUsers(users.map(user =>
-      user.id === userId ? { ...user, status: "approved" } : user
-    ));
-  } catch (error) {
-    console.error('Error validando profesional:', error);
-  }
-};
-
+  };
 
   return (
     <table className="table table-hover">
@@ -89,7 +87,9 @@ const handleApprove = async (userId) => {
         {users.map((user) => (
           <tr key={user.id}>
             <th scope="row">{user.id}</th>
-            <td>{`${user.first_name || ""} ${user.second_name || ""} ${user.first_surname || ""} ${user.second_surname || ""}`}</td>
+            <td>
+              {`${user.first_name || ""} ${user.second_name || ""} ${user.first_surname || ""} ${user.second_surname || ""}`}
+            </td>
             <td>{user.role}</td>
             <td>{user.status}</td>
             <td>

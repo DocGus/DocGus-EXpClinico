@@ -74,6 +74,7 @@ class FamilyBackgroundLine(PyEnum):
     grandparents = "grandparents"
 
 # -------------------- MODELO: USER --------------------
+# -------------------- MODELO: USER --------------------
 class User(db.Model):
     __tablename__ = "users"
 
@@ -88,7 +89,6 @@ class User(db.Model):
     password: Mapped[str] = mapped_column(String(200), nullable=False)
     role: Mapped[UserRole] = mapped_column(Enum(UserRole), nullable=False)
     status: Mapped[UserStatus] = mapped_column(Enum(UserStatus), nullable=False, default=UserStatus.pre_approved)
-
 
     professional_student_data: Mapped["ProfessionalStudentData"] = relationship(
         "ProfessionalStudentData", back_populates="user", uselist=False, cascade="all, delete-orphan", foreign_keys="[ProfessionalStudentData.user_id]"
@@ -109,7 +109,8 @@ class User(db.Model):
             "email": self.email,
             "role": self.role.value,
             "status": self.status.value,
-            "medical_file": self.medical_file.serialize() if self.medical_file else None
+            "medical_file": self.medical_file.serialize() if self.medical_file else None,
+            "professional_student_data": self.professional_student_data.serialize() if self.professional_student_data else None
         }
 
     def __repr__(self):
