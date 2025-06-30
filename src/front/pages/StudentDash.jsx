@@ -5,11 +5,11 @@ const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
 const StudentDash = () => {
   const [patientRequests, setPatientRequests] = useState([]);
+  const [assignedPatients, setAssignedPatients] = useState([]);
   const [professionalId, setProfessionalId] = useState("");
   const [studentStatus, setStudentStatus] = useState(null);
   const navigate = useNavigate();
 
-  // Cargar solicitudes de pacientes y datos de usuario
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -20,16 +20,21 @@ const StudentDash = () => {
           headers: { Authorization: `Bearer ${token}` },
         });
         const userData = await userRes.json();
-
         setStudentStatus(userData.user.status);
 
         // Obtener solicitudes de pacientes
         const requestsRes = await fetch(`${backendUrl}/api/student/patient_requests`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        if (!requestsRes.ok) throw new Error("Error cargando solicitudes");
         const requestsData = await requestsRes.json();
         setPatientRequests(requestsData);
+
+        // Obtener pacientes asignados
+        const assignedRes = await fetch(`${backendUrl}/api/student/assigned_patients`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const assignedData = await assignedRes.json();
+        setAssignedPatients(assignedData);
       } catch (error) {
         console.error(error);
       }
@@ -51,7 +56,7 @@ const StudentDash = () => {
       });
       if (!res.ok) throw new Error("Error solicitando aprobación");
       alert("Solicitud de aprobación enviada.");
-      setStudentStatus("pre_approved"); // o actualiza acorde a respuesta real
+      setStudentStatus("pre_approved");
     } catch (error) {
       alert(error.message);
     }
@@ -60,7 +65,7 @@ const StudentDash = () => {
   const handlePatientAction = async (patientId, action) => {
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`${backendUrl}/student/validate_patient/${patientId}`, {
+      const res = await fetch(`${backendUrl}/api/student/validate_patient/${patientId}`, {
         method: "PUT",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -70,9 +75,14 @@ const StudentDash = () => {
       });
       if (!res.ok) throw new Error("Error procesando solicitud");
       alert(`Solicitud ${action} correctamente.`);
-
-      // Actualizar lista local
       setPatientRequests(patientRequests.filter(p => p.id !== patientId));
+
+      // Refrescar pacientes asignados
+      const assignedRes = await fetch(`${backendUrl}/api/student/assigned_patients`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const assignedData = await assignedRes.json();
+      setAssignedPatients(assignedData);
     } catch (error) {
       alert(error.message);
     }
@@ -143,6 +153,39 @@ const StudentDash = () => {
                       disabled={!patient.approved}
                     >
                       Entrevista
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="assigned-patients mt-4">
+        <h3>Mis pacientes asignados</h3>
+        {assignedPatients.length === 0 ? (
+          <p>No tienes pacientes asignados aún.</p>
+        ) : (
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Paciente</th>
+                <th>Estado expediente</th>
+                <th>Entrevista</th>
+              </tr>
+            </thead>
+            <tbody>
+              {assignedPatients.map((patient) => (
+                <tr key={patient.id}>
+                  <td>{patient.full_name}</td>
+                  <td>{patient.file_status}</td>
+                  <td>
+                    <button
+                      onClick={() => goToInterview(patient.medicalFileId)}
+                      className="btn btn-primary"
+                    >
+                      Ver entrevista
                     </button>
                   </td>
                 </tr>
