@@ -292,10 +292,12 @@ def get_student_requests():
             "email": student.email,
             "career": data.career,
             "academic_grade": data.academic_grade.value,
-            "requested_at": data.requested_at.isoformat() if data.requested_at else None
+            "requested_at": data.requested_at.isoformat() if data.requested_at else None,
+            "status": student.status.value  # ✅ Agregado aquí
         })
 
     return jsonify(result), 200
+
 
 # 12 EPT para obtener el expediente médico de un paciente
 @api.route('/medical_file/<int:file_id>', methods=['GET'])

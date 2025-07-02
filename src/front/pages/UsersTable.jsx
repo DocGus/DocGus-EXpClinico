@@ -50,27 +50,45 @@ const UsersTable = () => {
     }
   };
 
-  const handleApprove = async (userId) => {
-    try {
-      const response = await fetch(`${backendUrl}/api/validate_professional/${userId}`, {
-        method: 'POST',
-        headers: {
-          "Authorization": `Bearer ${localStorage.getItem('token')}`,
-          "Content-Type": "application/json"
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error('No se pudo validar al profesional');
+const handleApprove = async (userId) => {
+  try {
+    const response = await fetch(`${backendUrl}/api/validate_professional/${userId}`, {
+      method: 'POST',
+      headers: {
+        "Authorization": `Bearer ${localStorage.getItem('token')}`,
+        "Content-Type": "application/json"
       }
+    });
 
-      setUsers(users.map(user =>
-        user.id === userId ? { ...user, status: "approved" } : user
-      ));
-    } catch (error) {
-      console.error('Error validando profesional:', error);
+    const data = await response.json();
+
+    if (!response.ok) {
+      alert(data.error || 'No se pudo validar al profesional');
+      return;
     }
-  };
+
+    alert("Profesional validado exitosamente");
+
+    // Recargar la lista completa después de aprobar
+    const updatedResponse = await fetch(`${backendUrl}/api/users`, {
+      method: 'GET',
+      headers: {
+        "Authorization": `Bearer ${localStorage.getItem('token')}`
+      }
+    });
+
+    if (!updatedResponse.ok) {
+      throw new Error('Error actualizando la lista de usuarios');
+    }
+
+    const updatedData = await updatedResponse.json();
+    setUsers(Array.isArray(updatedData) ? updatedData : updatedData.users);
+
+  } catch (error) {
+    console.error('Error validando profesional:', error);
+    alert('Error validando profesional');
+  }
+};
 
   return (
     <table className="table table-hover">
