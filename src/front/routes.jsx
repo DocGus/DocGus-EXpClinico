@@ -18,6 +18,7 @@ import ProfessionalDash from "./pages/ProfessionalDash.jsx";
 import PatientDash from "./pages/PatientDash.jsx";
 import BackGroundInterview from "./pages/BackGroundInterview.jsx";
 import PatientRequestStudent from "./pages/PatientRequestStudent.jsx";
+import ProfessionalInterview from "./pages/ProfessionalInterview.jsx"; // ✅ Importamos la nueva página
 
 export const router = createBrowserRouter(
   createRoutesFromElements(
@@ -29,12 +30,13 @@ export const router = createBrowserRouter(
       <Route path="/login" element={<Login />} />
       <Route path="/dashboard" element={<DashLayout />}>
         <Route path="admin" element={<AdminDash />} />
-          <Route path="admin/users_table" element={<UsersTable />} />
+        <Route path="admin/users_table" element={<UsersTable />} />
         <Route path="student" element={<StudentDash />} />
-          <Route path="student/interview/:medicalFileId" element={<BackGroundInterview />} />
+        <Route path="student/interview/:medicalFileId" element={<BackGroundInterview />} />
         <Route path="professional" element={<ProfessionalDash />} />
+        <Route path="professional/interview/:medicalFileId" element={<ProfessionalInterview />} /> {/* ✅ Nueva ruta */}
         <Route path="patient" element={<PatientDash />} />
-          <Route path="patient/request_student" element={<PatientRequestStudent />} />
+        <Route path="patient/request_student" element={<PatientRequestStudent />} />
       </Route>
     </Route>
   )

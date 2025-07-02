@@ -16,17 +16,8 @@ app = Flask(__name__)
 app.config["JWT_SECRET_KEY"] = "ZkV-hpLWLgVXEXmPu4I0gJY8NdW0cn4UK-ZOjQgoMR4"
 jwt = JWTManager(app)
 
-# ✅ Función para controlar orígenes dinámicamente
-def custom_cors_origin(origin):
-    allowed_origins = [
-        "https://cautious-potato-jjjr947p6r6g2p54r-3000.app.github.dev",
-        "https://cautious-potato-jjjr947p6r6g2p54r-5000.app.github.dev"
-    ]
-    if origin in allowed_origins:
-        return origin
-    return False
-
-CORS(app, supports_credentials=True, origins=custom_cors_origin)
+# ✅ SOLO UNA CONFIGURACIÓN DE CORS
+CORS(app, supports_credentials=True, resources={r"/api/*": {"origins": "*"}})
 
 ENV = "development" if os.getenv("FLASK_DEBUG") == "1" else "production"
 static_file_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), '../dist/')

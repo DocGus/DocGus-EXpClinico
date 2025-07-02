@@ -9,27 +9,33 @@ from enum import Enum as PyEnum
 
 db = SQLAlchemy()
 
+
 def serialize_datetime(value):
     if value is None:
         return None
     return value.isoformat()
 
 # -------------------- ENUMS PERSONALIZADOS --------------------
+
+
 class UserRole(str, enum.Enum):
     admin = "admin"
     professional = "professional"
     student = "student"
     patient = "patient"
 
+
 class SexType(str, enum.Enum):
     female = "female"
     male = "male"
     other = "other"
 
+
 class UserStatus(str, enum.Enum):
     pre_approved = "pre_approved"
     approved = "approved"
     inactive = "inactive"
+
 
 class FileStatus(str, enum.Enum):
     empty = "empty"
@@ -37,6 +43,7 @@ class FileStatus(str, enum.Enum):
     review = "review"
     approved = "approved"
     confirmed = "confirmed"
+
 
 class AcademicGrade(str, enum.Enum):
     no_formal_education = "no_formal_education"
@@ -47,14 +54,17 @@ class AcademicGrade(str, enum.Enum):
     bachelor = "bachelor"
     postgraduate_studies = "postgraduate_studies"
 
+
 class QualityLevel(PyEnum):
     good = "good"
     regular = "regular"
     bad = "bad"
 
+
 class YesNo(PyEnum):
     yes = "yes"
     no = "no"
+
 
 class CivilStatus(PyEnum):
     married = "married"
@@ -62,10 +72,12 @@ class CivilStatus(PyEnum):
     divorced = "divorced"
     widowed = "widowed"
 
+
 class HousingType(PyEnum):
     owned = "owned"
     rented = "rented"
     none = "none"
+
 
 class FamilyBackgroundLine(PyEnum):
     fathers = "fathers"
@@ -75,6 +87,8 @@ class FamilyBackgroundLine(PyEnum):
 
 # -------------------- MODELO: USER --------------------
 # -------------------- MODELO: USER --------------------
+
+
 class User(db.Model):
     __tablename__ = "users"
 
@@ -88,7 +102,8 @@ class User(db.Model):
     email: Mapped[str] = mapped_column(String(30), unique=True, nullable=False)
     password: Mapped[str] = mapped_column(String(200), nullable=False)
     role: Mapped[UserRole] = mapped_column(Enum(UserRole), nullable=False)
-    status: Mapped[UserStatus] = mapped_column(Enum(UserStatus), nullable=False, default=UserStatus.pre_approved)
+    status: Mapped[UserStatus] = mapped_column(
+        Enum(UserStatus), nullable=False, default=UserStatus.pre_approved)
 
     professional_student_data: Mapped["ProfessionalStudentData"] = relationship(
         "ProfessionalStudentData", back_populates="user", uselist=False, cascade="all, delete-orphan", foreign_keys="[ProfessionalStudentData.user_id]"
@@ -117,35 +132,47 @@ class User(db.Model):
         return f"<User {self.id} - {self.email} .>"
 
 # -------------------- MODELO: ProfesionalStudent DATA --------------------
+
+
 class ProfessionalStudentData(db.Model):
     __tablename__ = "professional_student_data"
-    
+
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, unique=True)
-    
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"), nullable=False, unique=True)
+
     institution: Mapped[str] = mapped_column(String(100), nullable=False)
     career: Mapped[str] = mapped_column(String(100), nullable=False)
-    academic_grade: Mapped[AcademicGrade] = mapped_column(Enum(AcademicGrade), nullable=False)
+    academic_grade: Mapped[AcademicGrade] = mapped_column(
+        Enum(AcademicGrade), nullable=False)
     register_number: Mapped[str] = mapped_column(String(30), nullable=False)
 
     # -------- VALIDACIÓN DEL ADMIN AL PROFESSIONAL --------
-    validated_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=True)  # Admin que valida al Professional
-    validated_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)               # Fecha validación Professional
-    
+    validated_by_id: Mapped[int] = mapped_column(ForeignKey(
+        "users.id"), nullable=True)  # Admin que valida al Professional
+    validated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=True)               # Fecha validación Professional
+
     validated_by: Mapped["User"] = relationship(
         "User",
         foreign_keys=[validated_by_id]
     )
 
     # -------- VALIDACIÓN DEL PROFESSIONAL AL STUDENT --------
-    requested_professional_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=True)  # Professional al que el Student le pide validación
-    requested_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)                        # Cuándo solicitó
+    requested_professional_id: Mapped[int] = mapped_column(ForeignKey(
+        "users.id"), nullable=True)  # Professional al que el Student le pide validación
+    requested_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=True)                        # Cuándo solicitó
 
-    approved_by_professional_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=True) # Professional que aprueba al Student
-    approved_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)                          # Cuándo aprobó
+    approved_by_professional_id: Mapped[int] = mapped_column(ForeignKey(
+        "users.id"), nullable=True)  # Professional que aprueba al Student
+    approved_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=True)                          # Cuándo aprobó
 
-    rejected_by_professional_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=True) # Si es rechazado
-    rejected_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)                          # Cuándo rechazó
+    rejected_by_professional_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"), nullable=True)  # Si es rechazado
+    rejected_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=True)                          # Cuándo rechazó
 
     requested_professional: Mapped["User"] = relationship(
         "User",
@@ -195,6 +222,7 @@ class ProfessionalStudentData(db.Model):
         }
 
 # -------------------- MODELO: MEDICAL FILE --------------------
+
 class MedicalFile(db.Model):
     __tablename__ = "medical_file"
 
@@ -203,7 +231,6 @@ class MedicalFile(db.Model):
     user = relationship("User", back_populates="medical_file", foreign_keys=[user_id])
 
     file_status = db.Column(Enum(FileStatus), default=FileStatus.empty, nullable=False)
-
     selected_student_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     selected_student = relationship("User", foreign_keys=[selected_student_id])
 
@@ -239,6 +266,8 @@ class MedicalFile(db.Model):
 
     no_confirmed_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     no_confirmed_at = db.Column(db.DateTime)
+    
+    review_html = db.Column(db.Text, nullable=True)
 
     # ---------- Relaciones de usuarios para cada estado ----------
     progressed_by = relationship("User", foreign_keys=[progressed_by_id])
@@ -285,15 +314,15 @@ class MedicalFile(db.Model):
         }
 
 
-        
-
 # -------------------- MODELO: NonPathologicalBackground --------------------
 class NonPathologicalBackground(db.Model):
     __tablename__ = "non_pathological_background"
 
     id = db.Column(db.Integer, primary_key=True)
-    medical_file_id = db.Column(db.Integer, db.ForeignKey('medical_file.id'), nullable=False)
-    medical_file = relationship("MedicalFile", back_populates="non_pathological_background")
+    medical_file_id = db.Column(db.Integer, db.ForeignKey(
+        'medical_file.id'), nullable=False)
+    medical_file = relationship(
+        "MedicalFile", back_populates="non_pathological_background")
 
     sex = db.Column(db.String(20))
     nationality = db.Column(db.String(80))
@@ -401,12 +430,16 @@ class NonPathologicalBackground(db.Model):
         }
 
 # -------------------- MODELO: PathologicalBackground --------------------
+
+
 class PathologicalBackground(db.Model):
     __tablename__ = "pathological_background"
 
     id = db.Column(db.Integer, primary_key=True)
-    medical_file_id = db.Column(db.Integer, db.ForeignKey('medical_file.id'), nullable=False)
-    medical_file = relationship("MedicalFile", back_populates="pathological_background")
+    medical_file_id = db.Column(db.Integer, db.ForeignKey(
+        'medical_file.id'), nullable=False)
+    medical_file = relationship(
+        "MedicalFile", back_populates="pathological_background")
 
     disability_description = db.Column(db.Text)
     visual_disability = db.Column(db.Boolean, default=False)
@@ -443,12 +476,16 @@ class PathologicalBackground(db.Model):
         }
 
 # -------------------- MODELO: FamilyBackground --------------------
+
+
 class FamilyBackground(db.Model):
     __tablename__ = "family_background"
 
     id = db.Column(db.Integer, primary_key=True)
-    medical_file_id = db.Column(db.Integer, db.ForeignKey('medical_file.id'), nullable=False)
-    medical_file = relationship("MedicalFile", back_populates="family_background")
+    medical_file_id = db.Column(db.Integer, db.ForeignKey(
+        'medical_file.id'), nullable=False)
+    medical_file = relationship(
+        "MedicalFile", back_populates="family_background")
 
     hypertension = db.Column(db.Boolean, default=False)
     diabetes = db.Column(db.Boolean, default=False)
@@ -476,12 +513,16 @@ class FamilyBackground(db.Model):
         }
 
 # -------------------- MODELO: GynecologicalBackground --------------------
+
+
 class GynecologicalBackground(db.Model):
     __tablename__ = "gynecological_background"
 
     id = db.Column(db.Integer, primary_key=True)
-    medical_file_id = db.Column(db.Integer, db.ForeignKey('medical_file.id'), nullable=False)
-    medical_file = relationship("MedicalFile", back_populates="gynecological_background")
+    medical_file_id = db.Column(db.Integer, db.ForeignKey(
+        'medical_file.id'), nullable=False)
+    medical_file = relationship(
+        "MedicalFile", back_populates="gynecological_background")
 
     menarche_age = db.Column(db.Integer)
     pregnancies = db.Column(db.Integer)

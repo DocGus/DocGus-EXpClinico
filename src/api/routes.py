@@ -1,10 +1,11 @@
 """
 This module takes care of starting the API Server, Loading the DB and Adding the endpoints
 """
+import json
 
 from flask import Flask, request, jsonify, url_for, Blueprint
-from api.models import db, User, ProfessionalStudentData, MedicalFile, FileStatus, UserRole, UserStatus, GynecologicalBackground, NonPathologicalBackground, PathologicalBackground, FamilyBackground
 from api.utils import generate_sitemap, APIException
+from api.models import db, User, ProfessionalStudentData, MedicalFile, FileStatus, UserRole, UserStatus, GynecologicalBackground, NonPathologicalBackground, PathologicalBackground, FamilyBackground, MedicalFileSnapshot
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
@@ -12,9 +13,11 @@ from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_requir
 from functools import wraps
 
 api = Blueprint('api', __name__)
-CORS(api)
+
 
 # ---------------------------- Decoradores de roles ----------------------------
+
+
 def role_required(role_name):
     def decorator(fn):
         @wraps(fn)
@@ -27,17 +30,21 @@ def role_required(role_name):
         return wrapper
     return decorator
 
+
 admin_required = role_required("admin")
 student_required = role_required("student")
 professional_required = role_required("professional")
 patient_required = role_required("patient")
 
 # 01 EPT para registrar un nuevo usuario
+
+
 @api.route('/register', methods=['POST'])
 def register_user():
     data = request.get_json()
 
-    required_fields = ["first_name", "first_surname", "birth_day", "role", "email", "password"]
+    required_fields = ["first_name", "first_surname",
+        "birth_day", "role", "email", "password"]
     for field in required_fields:
         if field not in data or not data[field]:
             return jsonify({"message": f"Campo requerido: {field}"}), 400
@@ -62,7 +69,8 @@ def register_user():
 
         # Si es student o professional, registrar datos académicos
         if data["role"] in ["student", "professional"]:
-            required_academic_fields = ["institution", "career", "academic_grade", "register_number"]
+            required_academic_fields = [
+                "institution", "career", "academic_grade", "register_number"]
             for field in required_academic_fields:
                 if field not in data or not data[field]:
                     return jsonify({"message": f"Campo requerido: {field}"}), 400
@@ -78,7 +86,8 @@ def register_user():
 
         # Si es patient, crear expediente en estado empty
         if data["role"] == "patient":
-            medical_file = MedicalFile(user_id=new_user.id, file_status=FileStatus.empty)
+            medical_file = MedicalFile(
+                user_id=new_user.id, file_status=FileStatus.empty)
             db.session.add(medical_file)
 
         db.session.commit()
@@ -89,6 +98,8 @@ def register_user():
         return jsonify({"message": f"Error en el servidor: {str(e)}"}), 500
 
 # 02 EPT para login
+
+
 @api.route('/login', methods=['POST'])
 def login():
     data = request.get_json()
@@ -99,10 +110,13 @@ def login():
     if not user or not check_password_hash(user.password, password):
         raise APIException("Credenciales inválidas", status_code=401)
 
-    access_token = create_access_token(identity=str(user.id), expires_delta=timedelta(hours=1))
+    access_token = create_access_token(identity=str(
+        user.id), expires_delta=timedelta(hours=1))
     return jsonify({"token": access_token, "user": user.serialize()}), 200
 
 # 03 EPT para ruta privada
+
+
 @api.route('/private', methods=['GET'])
 @jwt_required()
 def private():
@@ -110,6 +124,8 @@ def private():
     return jsonify({"msg": "Acceso autorizado", "user": current_user.serialize()}), 200
 
 # 04 EPT para obtener todos los usuarios (admin)
+
+
 @api.route('/users', methods=['GET'])
 @admin_required
 def get_users():
@@ -117,6 +133,8 @@ def get_users():
     return jsonify([user.serialize() for user in users]), 200
 
 # 05 EPT para validar profesional (admin)
+
+
 @api.route('/validate_professional/<int:user_id>', methods=['POST'])
 @admin_required
 def validate_professional(user_id):
@@ -136,6 +154,8 @@ def validate_professional(user_id):
     return jsonify({"message": "Profesional validado exitosamente"}), 200
 
 # 06 EPT para que el estudiante solicite validación al profesional
+
+
 @api.route('/request_student_validation/<int:professional_id>', methods=['POST'])
 @student_required
 def request_professional_validation(professional_id):
@@ -148,7 +168,8 @@ def request_professional_validation(professional_id):
     if not professional or professional.role != UserRole.professional or professional.status != UserStatus.approved:
         return jsonify({"error": "Profesional no válido o no aprobado"}), 400
 
-    student_data = ProfessionalStudentData.query.filter_by(user_id=student.id).first()
+    student_data = ProfessionalStudentData.query.filter_by(
+        user_id=student.id).first()
     if not student_data:
         return jsonify({"error": "Faltan datos académicos del estudiante"}), 400
 
@@ -159,6 +180,8 @@ def request_professional_validation(professional_id):
     return jsonify({"message": "Solicitud enviada al profesional"}), 200
 
 # 07 EPT para que el profesional apruebe o rechace al estudiante
+
+
 @api.route('/professional/validate_student/<int:student_id>', methods=['PUT'])
 @professional_required
 def validate_student(student_id):
@@ -168,7 +191,8 @@ def validate_student(student_id):
     if not student or student.role != UserRole.student or student.status != UserStatus.pre_approved:
         return jsonify({"error": "Estudiante no válido o ya aprobado"}), 400
 
-    student_data = ProfessionalStudentData.query.filter_by(user_id=student.id).first()
+    student_data = ProfessionalStudentData.query.filter_by(
+        user_id=student.id).first()
     if not student_data or student_data.requested_professional_id != professional.id:
         return jsonify({"error": "Este estudiante no te ha solicitado validación"}), 403
 
@@ -189,6 +213,8 @@ def validate_student(student_id):
     return jsonify({"message": f"Estudiante {action}d exitosamente"}), 200
 
 # 08 EPT para que el paciente solicite a un estudiante llenar su expediente
+
+
 @api.route('/patient/request_student_validation/<int:student_id>', methods=['POST'])
 @patient_required
 def patient_request_student(student_id):
@@ -211,6 +237,7 @@ def patient_request_student(student_id):
 
     db.session.commit()
     return jsonify({"message": "Solicitud enviada al estudiante"}), 200
+
 
 @api.route('/student/validate_patient/<int:patient_id>', methods=['PUT'])
 @student_required
@@ -261,7 +288,8 @@ def validate_patient(patient_id):
 @student_required
 def get_patient_requests():
     student_id = get_jwt_identity()
-    requests = MedicalFile.query.filter_by(patient_requested_student_id=student_id).all()
+    requests = MedicalFile.query.filter_by(
+        patient_requested_student_id=student_id).all()
     result = []
 
     for req in requests:
@@ -281,7 +309,8 @@ def get_patient_requests():
 @professional_required
 def get_student_requests():
     professional_id = get_jwt_identity()
-    student_requests = ProfessionalStudentData.query.filter_by(requested_professional_id=professional_id).all()
+    student_requests = ProfessionalStudentData.query.filter_by(
+        requested_professional_id=professional_id).all()
 
     result = []
     for data in student_requests:
@@ -292,36 +321,12 @@ def get_student_requests():
             "email": student.email,
             "career": data.career,
             "academic_grade": data.academic_grade.value,
-            "requested_at": data.requested_at.isoformat() if data.requested_at else None
+            "requested_at": data.requested_at.isoformat() if data.requested_at else None,
+            "status": student.status.value  # 👈 Devuelve el status para frontend
         })
 
     return jsonify(result), 200
 
-# 12 EPT para obtener el expediente médico de un paciente
-@api.route('/medical_file/<int:file_id>', methods=['GET'])
-@jwt_required()
-def get_medical_file(file_id):
-    medical_file = MedicalFile.query.get(file_id)
-    if not medical_file:
-        return jsonify({"error": "Expediente no encontrado"}), 404
-
-    user = User.query.get(medical_file.user_id)
-    if not user:
-        return jsonify({"error": "Paciente no encontrado"}), 404
-
-    return jsonify({
-        "medical_file": medical_file.serialize(),
-        "user": {
-            "id": user.id,
-            "first_name": user.first_name,
-            "second_name": user.second_name,
-            "first_surname": user.first_surname,
-            "second_surname": user.second_surname,
-            "birth_day": user.birth_day.isoformat(),
-            "email": user.email,
-            "phone": user.phone,
-        }
-    }), 200
 
 # 13 EPT para guardar antecedentes médicos
 @api.route('/api/backgrounds', methods=['POST'])
@@ -389,7 +394,6 @@ def save_backgrounds():
     return jsonify({"message": "Antecedentes guardados exitosamente"}), 200
 
 
-
 # 14 EPT para marcar expediente como en revisión (estudiante)
 @api.route('/student/mark_review/<int:medical_file_id>', methods=['PUT'])
 @student_required
@@ -453,6 +457,8 @@ def get_assigned_patients():
     return jsonify(result), 200
 
 # 17 EPT para que el estudiante cree antecedentes médicos
+
+
 @api.route('/backgrounds', methods=['POST'])
 @student_required
 def create_backgrounds():
@@ -479,7 +485,8 @@ def create_backgrounds():
         return {k: (v if v != "" else None) for k, v in d.items()}
 
     # Limpiar datos
-    non_path_data = clean_empty_strings(data.get("non_pathological_background", {}))
+    non_path_data = clean_empty_strings(
+        data.get("non_pathological_background", {}))
     path_data = clean_empty_strings(data.get("patological_background", {}))
     family_data = clean_empty_strings(data.get("family_background", {}))
     gyneco_data = clean_empty_strings(data.get("gynecological_background", {}))
@@ -558,4 +565,117 @@ def create_backgrounds():
     db.session.commit()
 
     return jsonify({"message": "Antecedentes creados y expediente enviado a revisión"}), 201
+
+
+# 18 EPT para que el profesional obtenga estudiantes aprobados
+@api.route('/professional/approved_students', methods=['GET'])
+@professional_required
+def get_approved_students():
+    professional_id = get_jwt_identity()
+
+    students = ProfessionalStudentData.query.filter_by(
+        validated_by_id=professional_id).all()
+    result = []
+    for data in students:
+        student = User.query.get(data.user_id)
+        if student and student.status == UserStatus.approved:
+            result.append({
+                "id": student.id,
+                "full_name": f"{student.first_name} {student.first_surname}",
+                "email": student.email,
+                "career": data.career,
+                "academic_grade": data.academic_grade.value,
+                "validated_at": data.validated_at.isoformat() if data.validated_at else None
+            })
+
+    return jsonify(result), 200
+
+
+# 19 EPT para que el profesional obtenga archivos en revisión
+@api.route('/professional/review_files', methods=['GET'])
+@professional_required
+def get_review_files():
+    files = MedicalFile.query.filter_by(file_status=FileStatus.review).all()
+    result = []
+
+    for file in files:
+        patient = User.query.get(file.user_id)
+        if not patient:
+            continue
+
+        student = User.query.get(file.selected_student_id)
+        result.append({
+            "id": file.id,
+            "patient_name": f"{patient.first_name} {patient.first_surname}",
+            "student_name": f"{student.first_name} {student.first_surname}" if student else "Sin asignar",
+            "file_status": file.file_status.name if file.file_status else "N/A"
+        })
+
+    return jsonify(result), 200
+
+# 20 Endpoint para obtener un expediente específico con todos sus antecedentes
+
+
+@api.route("/medical_file/<int:file_id>", methods=["GET"])
+@jwt_required()
+def get_medical_file(file_id):
+    """
+    Retorna el expediente clínico completo (MedicalFile) con todas sus secciones relacionadas
+    para que el profesional pueda revisarlo en modo lectura.
+    """
+    current_user_id = get_jwt_identity()
+
+    # Buscar el expediente
+    medical_file = db.session.get(MedicalFile, file_id)
+    if not medical_file:
+        raise APIException("Expediente no encontrado", 404)
+
+    # Verificar si el usuario actual es profesional
+    current_user = db.session.get(User, current_user_id)
+    if current_user.role != UserRole.professional:
+        raise APIException("Acceso no autorizado", 403)
+
+    # Obtener paciente
+    patient = db.session.get(User, medical_file.user_id)
+
+    # Armar la respuesta tal como en tu endpoint original
+    result = {
+        "id": medical_file.id,
+        "file_status": medical_file.file_status.name if medical_file.file_status else "N/A",
+        "user_id": medical_file.user_id,
+        "selected_student_id": medical_file.selected_student_id,
+        "patient": patient.serialize() if patient else None,
+        "non_pathological_background": medical_file.non_pathological_background.serialize() if medical_file.non_pathological_background else None,
+        "pathological_background": medical_file.pathological_background.serialize() if medical_file.pathological_background else None,
+        "family_background": medical_file.family_background.serialize() if medical_file.family_background else None,
+        "gynecological_background": medical_file.gynecological_background.serialize() if medical_file.gynecological_background else None,
+    }
+
+    return jsonify(result), 200
+
+# 21 EPT para que el estudiante actualice el snapshot del expediente
+@api.route('/student/update_snapshot/<int:medical_file_id>', methods=['PUT'])
+@student_required
+def update_snapshot(medical_file_id):
+    medical_file = MedicalFile.query.get(medical_file_id)
+    if not medical_file:
+        return jsonify({"error": "Expediente no encontrado"}), 404
+
+    # Generar HTML snapshot
+    snapshot_html = f"""
+    <h2>Entrevista Médica</h2>
+    <p><strong>Motivo de consulta:</strong> {medical_file.reason_for_consultation or 'N/A'}</p>
+    <p><strong>Enfermedad actual:</strong> {medical_file.current_illness or 'N/A'}</p>
+    <p><strong>Datos No Patológicos:</strong> {medical_file.non_pathological_background.serialize() if medical_file.non_pathological_background else 'N/A'}</p>
+    <p><strong>Datos Patológicos:</strong> {medical_file.pathological_background.serialize() if medical_file.pathological_background else 'N/A'}</p>
+    <p><strong>Datos Familiares:</strong> {medical_file.family_background.serialize() if medical_file.family_background else 'N/A'}</p>
+    <p><strong>Datos Ginecológicos:</strong> {medical_file.gynecological_background.serialize() if medical_file.gynecological_background else 'N/A'}</p>
+    """
+    
+    # Guardar snapshot
+    medical_file.review_html = snapshot_html
+    db.session.commit()
+
+    return jsonify({"message": "Snapshot actualizado exitosamente"}), 200
+
 
