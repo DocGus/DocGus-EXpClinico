@@ -4,31 +4,16 @@ import { useNavigate } from "react-router-dom";
 const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
 const ProfessionalDash = () => {
-  const [reviewFiles, setReviewFiles] = useState([]);
   const [studentRequests, setStudentRequests] = useState([]);
+  const [reviewFiles, setReviewFiles] = useState([]);
   const [comment, setComment] = useState("");
   const navigate = useNavigate();
 
+  // ---------------------- Fetch student requests ----------------------
   useEffect(() => {
-    const token = localStorage.getItem("token");
-
-    // Expedientes en revisión
-    const fetchReviewFiles = async () => {
-      try {
-        const res = await fetch(`${backendUrl}/api/professional/review_files`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) throw new Error("Error cargando expedientes en revisión");
-        const data = await res.json();
-        setReviewFiles(data);
-      } catch (error) {
-        console.error(error);
-      }
-    };
-
-    // Solicitudes de estudiantes
     const fetchStudentRequests = async () => {
       try {
+        const token = localStorage.getItem("token");
         const res = await fetch(`${backendUrl}/api/professional/student_requests`, {
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -39,32 +24,28 @@ const ProfessionalDash = () => {
         console.error(error);
       }
     };
-
-    fetchReviewFiles();
     fetchStudentRequests();
   }, []);
 
-  const handleReviewAction = async (fileId, action) => {
-    try {
-      const token = localStorage.getItem("token");
-      const res = await fetch(`${backendUrl}/api/professional/review_file/${fileId}`, {
-        method: "PUT",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ action, comment }),
-      });
-      if (!res.ok) throw new Error("Error procesando acción");
-      alert(`Expediente ${action} correctamente.`);
+  // ---------------------- Fetch review files ----------------------
+  useEffect(() => {
+    const fetchReviewFiles = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const res = await fetch(`${backendUrl}/api/professional/review_files`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error("Error cargando expedientes en revisión");
+        const data = await res.json();
+        setReviewFiles(data);
+      } catch (error) {
+        console.error(error);
+      }
+    };
+    fetchReviewFiles();
+  }, []);
 
-      setReviewFiles((prev) => prev.filter((file) => file.id !== fileId));
-      setComment("");
-    } catch (error) {
-      alert(error.message);
-    }
-  };
-
+  // ---------------------- Handle student validation ----------------------
   const handleStudentAction = async (studentId, action) => {
     try {
       const token = localStorage.getItem("token");
@@ -76,22 +57,39 @@ const ProfessionalDash = () => {
         },
         body: JSON.stringify({ action }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Error procesando acción");
+      if (!res.ok) throw new Error("Error procesando solicitud");
+      alert(`Estudiante ${action} exitosamente.`);
 
-      alert(data.message);
-
-      if (action === "reject") {
-        // Quitar de la lista si se rechaza
-        setStudentRequests((prev) => prev.filter((s) => s.id !== studentId));
-      } else if (action === "approve") {
-        // Marcar como aprobado para mostrar botón verde
+      if (action === "approve") {
         setStudentRequests((prev) =>
           prev.map((student) =>
-            student.id === studentId ? { ...student, status: "approved" } : student
+            student.id === studentId ? { ...student, approved: true } : student
           )
         );
+      } else if (action === "reject") {
+        setStudentRequests((prev) => prev.filter((student) => student.id !== studentId));
       }
+    } catch (error) {
+      alert(error.message);
+    }
+  };
+
+  // ---------------------- Handle review files ----------------------
+  const handleReviewAction = async (fileId, action) => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${backendUrl}/api/professional/review_file/${fileId}`, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ action, comment }),
+      });
+      if (!res.ok) throw new Error("Error procesando expediente");
+      alert(`Expediente ${action} correctamente.`);
+      setReviewFiles((prev) => prev.filter((file) => file.id !== fileId));
+      setComment("");
     } catch (error) {
       alert(error.message);
     }
@@ -102,17 +100,75 @@ const ProfessionalDash = () => {
   };
 
   return (
-    <div className="professional-dash">
+    <div className="professional-dash container py-4">
       <h2>Panel del Profesional</h2>
 
-      <h4>Expedientes en revisión</h4>
+      {/* ---------------------- SECCIÓN A: Solicitudes de estudiantes ---------------------- */}
+      <h4>Solicitudes de estudiantes para validación</h4>
+      {studentRequests.length === 0 ? (
+        <p>No hay solicitudes pendientes.</p>
+      ) : (
+        <table className="table table-hover">
+          <thead>
+            <tr>
+              <th>Nombre</th>
+              <th>Email</th>
+              <th>Carrera</th>
+              <th>Grado académico</th>
+              <th>Solicitado en</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {studentRequests.map((student) => (
+              <tr key={student.id}>
+                <td>{student.full_name}</td>
+                <td>{student.email}</td>
+                <td>{student.career}</td>
+                <td>{student.academic_grade}</td>
+                <td>{student.requested_at ? new Date(student.requested_at).toLocaleString() : "N/A"}</td>
+                <td>
+                  {student.approved ? (
+                    <button className="btn btn-success" disabled>
+                      Aprobado
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => handleStudentAction(student.id, "approve")}
+                        className="btn btn-success me-2"
+                      >
+                        Aprobar
+                      </button>
+                      <button
+                        onClick={() => handleStudentAction(student.id, "reject")}
+                        className="btn btn-danger"
+                      >
+                        Rechazar
+                      </button>
+                    </>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      <hr />
+
+      {/* ---------------------- SECCIÓN B: Expedientes en revisión ---------------------- */}
+      <h4>Expedientes en revisión (solo tus estudiantes aprobados)</h4>
       {reviewFiles.length === 0 ? (
         <p>No hay expedientes pendientes de revisión.</p>
       ) : (
-        <table className="table">
+        <table className="table table-hover">
           <thead>
             <tr>
               <th>ID Expediente</th>
+              <th>Paciente</th>
+              <th>Estudiante</th>
+              <th>Snapshot</th>
               <th>Acciones</th>
               <th>Entrevista</th>
             </tr>
@@ -121,6 +177,22 @@ const ProfessionalDash = () => {
             {reviewFiles.map((file) => (
               <tr key={file.id}>
                 <td>{file.id}</td>
+                <td>{file.patient_name}</td>
+                <td>{file.student_name}</td>
+                <td>
+                  {file.snapshots && file.snapshots.length > 0 ? (
+                    <a
+                      href={file.snapshots[0]}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn btn-info"
+                    >
+                      Ver snapshot
+                    </a>
+                  ) : (
+                    <span>No snapshot</span>
+                  )}
+                </td>
                 <td>
                   <textarea
                     placeholder="Comentario (opcional)"
@@ -148,66 +220,6 @@ const ProfessionalDash = () => {
                   >
                     Ver entrevista
                   </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-
-      <h4>Solicitudes de estudiantes</h4>
-      {studentRequests.length === 0 ? (
-        <p>No hay solicitudes.</p>
-      ) : (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Nombre</th>
-              <th>Email</th>
-              <th>Carrera</th>
-              <th>Grado</th>
-              <th>Solicitado en</th>
-              <th>Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {studentRequests.map((student) => (
-              <tr key={student.id}>
-                <td>{student.full_name}</td>
-                <td>{student.email}</td>
-                <td>{student.career}</td>
-                <td>{student.academic_grade}</td>
-                <td>{student.requested_at}</td>
-                <td>
-                  {student.status === "approved" ? (
-                    <button
-                      className="btn"
-                      style={{
-                        backgroundColor: "#28a745",
-                        color: "#fff",
-                        cursor: "default",
-                        border: "none",
-                      }}
-                      disabled
-                    >
-                      Aprobado
-                    </button>
-                  ) : (
-                    <>
-                      <button
-                        onClick={() => handleStudentAction(student.id, "approve")}
-                        className="btn btn-success me-2"
-                      >
-                        Aprobar
-                      </button>
-                      <button
-                        onClick={() => handleStudentAction(student.id, "reject")}
-                        className="btn btn-danger"
-                      >
-                        Rechazar
-                      </button>
-                    </>
-                  )}
                 </td>
               </tr>
             ))}

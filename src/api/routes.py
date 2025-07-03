@@ -3,7 +3,7 @@ This module takes care of starting the API Server, Loading the DB and Adding the
 """
 
 from flask import Flask, request, jsonify, url_for, Blueprint
-from api.models import db, User, ProfessionalStudentData, MedicalFile, FileStatus, UserRole, UserStatus, GynecologicalBackground, NonPathologicalBackground, PathologicalBackground, FamilyBackground
+from api.models import db, User, ProfessionalStudentData, MedicalFile, FileStatus, UserRole, UserStatus, GynecologicalBackground, NonPathologicalBackground, PathologicalBackground, FamilyBackground, MedicalFileSnapshot
 from api.utils import generate_sitemap, APIException
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -256,7 +256,7 @@ def validate_patient(patient_id):
     return jsonify({"message": f"Paciente {action}d exitosamente"}), 200
 
 
-# 10 EPT para obtener solicitudes de pacientes al estudiante
+# 09 EPT para obtener solicitudes de pacientes al estudiante
 @api.route('/student/patient_requests', methods=['GET'])
 @student_required
 def get_patient_requests():
@@ -276,7 +276,7 @@ def get_patient_requests():
     return jsonify(result), 200
 
 
-# 11 EPT para obtener solicitudes de estudiantes al profesional
+# 10 EPT para obtener solicitudes de estudiantes al profesional
 @api.route('/professional/student_requests', methods=['GET'])
 @professional_required
 def get_student_requests():
@@ -299,7 +299,7 @@ def get_student_requests():
     return jsonify(result), 200
 
 
-# 12 EPT para obtener el expediente médico de un paciente
+# 11 EPT para obtener el expediente médico de un paciente
 @api.route('/medical_file/<int:file_id>', methods=['GET'])
 @jwt_required()
 def get_medical_file(file_id):
@@ -325,7 +325,7 @@ def get_medical_file(file_id):
         }
     }), 200
 
-# 13 EPT para guardar antecedentes médicos
+# 12 EPT para guardar antecedentes médicos
 @api.route('/api/backgrounds', methods=['POST'])
 @jwt_required()
 def save_backgrounds():
@@ -392,7 +392,7 @@ def save_backgrounds():
 
 
 
-# 14 EPT para marcar expediente como en revisión (estudiante)
+# 13 EPT para marcar expediente como en revisión (estudiante)
 @api.route('/student/mark_review/<int:medical_file_id>', methods=['PUT'])
 @student_required
 def mark_file_review(medical_file_id):
@@ -406,6 +406,50 @@ def mark_file_review(medical_file_id):
 
     return jsonify({"message": "Expediente marcado como en revisión"}), 200
 
+# 14 EPT para que el estudiante suba un snapshot del expediente
+@api.route('/upload_snapshot/<int:file_id>', methods=['POST'])
+@student_required
+def upload_snapshot(file_id):
+    """
+    Endpoint para subir un snapshot (imagen o PDF en base64 o URL) del expediente llenado por el estudiante.
+    Guarda la URL (o dataURL base64) en la tabla MedicalFileSnapshot
+    y cambia el estado del expediente a 'review'.
+    """
+    try:
+        medical_file = MedicalFile.query.get(file_id)
+        if not medical_file:
+            return jsonify({"error": "Expediente no encontrado"}), 404
+
+        data = request.get_json()
+        snapshot_url = data.get("snapshot_url")
+        if not snapshot_url:
+            return jsonify({"error": "snapshot_url es requerido"}), 400
+
+        current_user_id = get_jwt_identity()
+        if not current_user_id:
+            return jsonify({"error": "Usuario no autenticado"}), 401
+
+        new_snapshot = MedicalFileSnapshot(
+            medical_file_id=file_id,
+            url=snapshot_url,
+            uploaded_by_id=current_user_id
+            # ⚡ No agregues created_at si tu modelo ya tiene default
+        )
+        db.session.add(new_snapshot)
+
+        # Actualizar estado expediente
+        medical_file.file_status = FileStatus.review
+        medical_file.reviewed_at = datetime.utcnow()
+
+        db.session.commit()
+
+        return jsonify({"message": "Snapshot guardado y expediente enviado a revisión"}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Error interno: {str(e)}"}), 500
+
+
 
 # 15 EPT para que el profesional revise el expediente apruebe o rechace
 @api.route('/professional/review_file/<int:medical_file_id>', methods=['PUT'])
@@ -413,7 +457,7 @@ def mark_file_review(medical_file_id):
 def review_file(medical_file_id):
     data = request.get_json()
     action = data.get("action")
-    comment = data.get("comment", "")
+    comment = data.get("comment", "")  # Por defecto vacío si no mandan
 
     medical_file = MedicalFile.query.get(medical_file_id)
     if not medical_file:
@@ -423,17 +467,19 @@ def review_file(medical_file_id):
         medical_file.file_status = FileStatus.approved
         medical_file.approved_at = datetime.utcnow()
         medical_file.approved_by_id = get_jwt_identity()
+        medical_file.rejection_comment = None  # Limpiar comentario en caso de aprobación
+
     elif action == "reject":
         medical_file.file_status = FileStatus.progress
         medical_file.no_approved_at = datetime.utcnow()
         medical_file.no_approved_by_id = get_jwt_identity()
-        # Aquí podrías guardar `comment` en una columna aparte si quieres
+        medical_file.rejection_comment = comment  # 💥 Guardar nota de rechazo
+
     else:
-        return jsonify({"error": "Acción no válida"}), 400
+        return jsonify({"error": "Acción no válida. Usa 'approve' o 'reject'"}), 400
 
     db.session.commit()
     return jsonify({"message": f"Expediente {action} correctamente."}), 200
-
 
 # 16 EPT para que el estudiante obtenga sus pacientes asignados
 @api.route('/student/assigned_patients', methods=['GET'])
@@ -561,3 +607,53 @@ def create_backgrounds():
 
     return jsonify({"message": "Antecedentes creados y expediente enviado a revisión"}), 201
 
+
+# 18 EPT para que el profesional obtenga los archivos en revisión de estudiantes aprobados
+@api.route('/professional/review_files', methods=['GET'])
+@professional_required
+def get_review_files():
+    professional_id = get_jwt_identity()
+
+    # Buscar estudiantes aprobados por este profesional
+    approved_students = ProfessionalStudentData.query.filter_by(validated_by_id=professional_id).all()
+    approved_student_ids = [s.user_id for s in approved_students if s.user_id]
+
+    # Buscar expedientes en review de esos estudiantes
+    files = MedicalFile.query.filter(
+        MedicalFile.file_status == FileStatus.review,
+        MedicalFile.selected_student_id.in_(approved_student_ids)
+    ).all()
+
+    result = []
+    for f in files:
+        patient = User.query.get(f.user_id)
+        student = User.query.get(f.selected_student_id)
+        result.append({
+            "id": f.id,
+            "file_status": f.file_status.value,
+            "patient_id": patient.id,
+            "patient_name": f"{patient.first_name} {patient.first_surname}",
+            "student_id": student.id,
+            "student_name": f"{student.first_name} {student.first_surname}",
+            "snapshots": [s.url for s in f.snapshots] if f.snapshots else [],
+        })
+
+    return jsonify(result), 200
+
+# 19 EPT para que profesional obtenga los snapshots de un expediente
+@api.route('/professional/snapshots/<int:medical_file_id>', methods=['GET'])
+@professional_required
+def get_snapshots(medical_file_id):
+    medical_file = MedicalFile.query.get(medical_file_id)
+    if not medical_file:
+        return jsonify({"error": "Expediente no encontrado"}), 404
+
+    snapshots = MedicalFileSnapshot.query.filter_by(medical_file_id=medical_file_id).order_by(MedicalFileSnapshot.created_at.desc()).all()
+    result = [{
+        "id": s.id,
+        "url": s.url,
+        "uploaded_at": s.created_at.isoformat() if s.created_at else None,
+        "uploaded_by_id": s.uploaded_by_id
+    } for s in snapshots]
+
+    return jsonify(result), 200

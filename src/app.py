@@ -16,22 +16,19 @@ app = Flask(__name__)
 app.config["JWT_SECRET_KEY"] = "ZkV-hpLWLgVXEXmPu4I0gJY8NdW0cn4UK-ZOjQgoMR4"
 jwt = JWTManager(app)
 
-# ✅ Configurar CORS con URLs actualizadas
+# ✅ Configuración CORS mejorada
 CORS(
     app,
+    resources={r"/api/*": {"origins": "https://musical-space-barnacle-r447wr6597pp35xjw-3000.app.github.dev"}},
     supports_credentials=True,
-    origins=[
-        "https://musical-space-barnacle-r447wr6597pp35xjw-3000.app.github.dev"
-    ],
-    allow_headers="*",
-    expose_headers="*"
+    allow_headers=["Content-Type", "Authorization"],
+    expose_headers=["Content-Type", "Authorization"]
 )
 
 ENV = "development" if os.getenv("FLASK_DEBUG") == "1" else "production"
 static_file_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), '../dist/')
 app.url_map.strict_slashes = False
 
-# Configuración base de datos
 db_url = os.getenv("DATABASE_URL")
 if db_url is not None:
     app.config['SQLALCHEMY_DATABASE_URI'] = db_url.replace("postgres://", "postgresql://")
@@ -42,26 +39,21 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 MIGRATE = Migrate(app, db, compare_type=True)
 db.init_app(app)
 
-# Admin y comandos
 setup_admin(app)
 setup_commands(app)
 
-# Registrar Blueprints
 app.register_blueprint(api, url_prefix='/api')
 
-# Manejo de errores global
 @app.errorhandler(APIException)
 def handle_invalid_usage(error):
     return jsonify(error.to_dict()), error.status_code
 
-# Sitemap solo en modo development
 @app.route('/')
 def sitemap():
     if ENV == "development":
         return generate_sitemap(app)
     return send_from_directory(static_file_dir, 'index.html')
 
-# Catch-all para frontend
 @app.route('/<path:path>', methods=['GET'])
 def serve_any_other_file(path):
     if path.startswith("api"):
@@ -73,10 +65,9 @@ def serve_any_other_file(path):
     else:
         response = send_from_directory(static_file_dir, 'index.html')
 
-    response.cache_control.max_age = 0  # Evitar cache en desarrollo
+    response.cache_control.max_age = 0
     return response
 
-# Solo si se ejecuta directamente
 if __name__ == '__main__':
     PORT = int(os.environ.get('PORT', 3001))
     app.run(host='0.0.0.0', port=PORT, debug=True)

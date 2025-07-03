@@ -30,17 +30,26 @@ const StudentDash = () => {
         setPatientRequests(requestsData);
 
         // Obtener pacientes asignados
-        const assignedRes = await fetch(`${backendUrl}/api/student/assigned_patients`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const assignedData = await assignedRes.json();
-        setAssignedPatients(assignedData);
+        await fetchAssignedPatients(token);
       } catch (error) {
         console.error(error);
       }
     };
+
     fetchData();
   }, []);
+
+  const fetchAssignedPatients = async (token) => {
+    try {
+      const res = await fetch(`${backendUrl}/api/student/assigned_patients`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      setAssignedPatients(data);
+    } catch (error) {
+      console.error("Error fetching assigned patients:", error);
+    }
+  };
 
   const handleRequestApproval = async () => {
     if (!professionalId) {
@@ -75,20 +84,19 @@ const StudentDash = () => {
       });
       if (!res.ok) throw new Error("Error procesando solicitud");
       alert(`Solicitud ${action} correctamente.`);
+
+      // Quitar de la lista de solicitudes
       setPatientRequests(patientRequests.filter(p => p.id !== patientId));
 
       // Refrescar pacientes asignados
-      const assignedRes = await fetch(`${backendUrl}/api/student/assigned_patients`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const assignedData = await assignedRes.json();
-      setAssignedPatients(assignedData);
+      await fetchAssignedPatients(token);
     } catch (error) {
       alert(error.message);
     }
   };
 
   const goToInterview = (medicalFileId) => {
+    // Navegar a la entrevista; la vista de entrevista debe encargarse de cargar el expediente
     navigate(`/dashboard/student/interview/${medicalFileId}`);
   };
 

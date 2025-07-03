@@ -5,10 +5,12 @@ from sqlalchemy import String, Integer, Boolean, DateTime, ForeignKey, Enum, Tex
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from datetime import datetime, date
 import enum
-from enum import Enum as PyEnum
 
 db = SQLAlchemy()
 
+
+# -------------------- SERIALIZACIÓN DE DATETIME --------------------
+# Función para serializar objetos datetime a formato ISO 8601
 def serialize_datetime(value):
     if value is None:
         return None
@@ -47,35 +49,38 @@ class AcademicGrade(str, enum.Enum):
     bachelor = "bachelor"
     postgraduate_studies = "postgraduate_studies"
 
-class QualityLevel(PyEnum):
+class QualityLevel(str, enum.Enum):
     good = "good"
     regular = "regular"
     bad = "bad"
 
-class YesNo(PyEnum):
+class YesNo(str, enum.Enum):
     yes = "yes"
     no = "no"
 
-class CivilStatus(PyEnum):
+class CivilStatus(str, enum.Enum):
     married = "married"
     single = "single"
     divorced = "divorced"
     widowed = "widowed"
 
-class HousingType(PyEnum):
+class HousingType(str, enum.Enum):
     owned = "owned"
     rented = "rented"
     none = "none"
 
-class FamilyBackgroundLine(PyEnum):
+class FamilyBackgroundLine(str, enum.Enum):
     fathers = "fathers"
     brothers_or_sisters = "brothers_or_sisters"
     uncles_or_aunts = "uncles_or_aunts"
     grandparents = "grandparents"
 
 # -------------------- MODELO: USER --------------------
-# -------------------- MODELO: USER --------------------
 class User(db.Model):
+    """
+    Modelo User que almacena información principal de cada usuario.
+    Soporta roles, estado y relaciones con expedientes y datos académicos.
+    """
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -90,11 +95,20 @@ class User(db.Model):
     role: Mapped[UserRole] = mapped_column(Enum(UserRole), nullable=False)
     status: Mapped[UserStatus] = mapped_column(Enum(UserStatus), nullable=False, default=UserStatus.pre_approved)
 
+    # Relaciones
     professional_student_data: Mapped["ProfessionalStudentData"] = relationship(
-        "ProfessionalStudentData", back_populates="user", uselist=False, cascade="all, delete-orphan", foreign_keys="[ProfessionalStudentData.user_id]"
+        "ProfessionalStudentData",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
+        foreign_keys="[ProfessionalStudentData.user_id]"
     )
     medical_file: Mapped["MedicalFile"] = relationship(
-        "MedicalFile", back_populates="user", foreign_keys="[MedicalFile.user_id]", uselist=False, cascade="all, delete-orphan"
+        "MedicalFile",
+        back_populates="user",
+        foreign_keys="[MedicalFile.user_id]",
+        uselist=False,
+        cascade="all, delete-orphan"
     )
 
     def serialize(self):
@@ -114,7 +128,7 @@ class User(db.Model):
         }
 
     def __repr__(self):
-        return f"<User {self.id} - {self.email} .>"
+        return f"<User {self.id} - {self.email}>"
 
 # -------------------- MODELO: ProfesionalStudent DATA --------------------
 class ProfessionalStudentData(db.Model):
@@ -207,12 +221,10 @@ class MedicalFile(db.Model):
     selected_student_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     selected_student = relationship("User", foreign_keys=[selected_student_id])
 
-    # ---------- Solicitud del paciente hacia un estudiante ----------
     patient_requested_student_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     patient_requested_student_at = db.Column(db.DateTime, nullable=True)
     patient_requested_student = relationship("User", foreign_keys=[patient_requested_student_id])
 
-    # ---------- Resultado de la validación por el estudiante ----------
     student_validated_patient_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     student_validated_patient_at = db.Column(db.DateTime, nullable=True)
     student_validated_patient = relationship("User", foreign_keys=[student_validated_patient_id])
@@ -221,7 +233,6 @@ class MedicalFile(db.Model):
     student_rejected_patient_at = db.Column(db.DateTime, nullable=True)
     student_rejected_patient = relationship("User", foreign_keys=[student_rejected_patient_id])
 
-    # ---------- Flujo del expediente ----------
     progressed_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     progressed_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -240,7 +251,6 @@ class MedicalFile(db.Model):
     no_confirmed_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     no_confirmed_at = db.Column(db.DateTime)
 
-    # ---------- Relaciones de usuarios para cada estado ----------
     progressed_by = relationship("User", foreign_keys=[progressed_by_id])
     reviewed_by = relationship("User", foreign_keys=[reviewed_by_id])
     approved_by = relationship("User", foreign_keys=[approved_by_id])
@@ -248,11 +258,17 @@ class MedicalFile(db.Model):
     confirmed_by = relationship("User", foreign_keys=[confirmed_by_id])
     no_confirmed_by = relationship("User", foreign_keys=[no_confirmed_by_id])
 
-    # ---------- Relaciones con antecedentes ----------
     non_pathological_background = relationship("NonPathologicalBackground", uselist=False, back_populates="medical_file")
     pathological_background = relationship("PathologicalBackground", uselist=False, back_populates="medical_file")
     family_background = relationship("FamilyBackground", uselist=False, back_populates="medical_file")
     gynecological_background = relationship("GynecologicalBackground", uselist=False, back_populates="medical_file")
+
+
+    snapshots = relationship(
+        "MedicalFileSnapshot",
+        back_populates="medical_file",
+        cascade="all, delete-orphan"
+    )
 
     def serialize(self):
         return {
@@ -285,7 +301,40 @@ class MedicalFile(db.Model):
         }
 
 
-        
+# -------------------- MODELO: MedicalFileSnapshot --------------------
+
+
+class MedicalFileSnapshot(db.Model):
+    __tablename__ = "medical_file_snapshot"
+
+    id = db.Column(db.Integer, primary_key=True)
+    medical_file_id = db.Column(db.Integer, db.ForeignKey('medical_file.id', ondelete="CASCADE"), nullable=False)
+    url = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    uploaded_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+
+    # Relaciones
+    medical_file = relationship(
+        "MedicalFile",
+        back_populates="snapshots",
+        passive_deletes=True
+    )
+    uploaded_by = relationship(
+        "User",
+        primaryjoin="User.id == foreign(MedicalFileSnapshot.uploaded_by_id)",
+        foreign_keys="[MedicalFileSnapshot.uploaded_by_id]"
+    )
+
+    def serialize(self):
+        return {
+            "id": self.id,
+            "medical_file_id": self.medical_file_id,
+            "url": self.url,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "uploaded_by_id": self.uploaded_by_id
+        }
+
+
 
 # -------------------- MODELO: NonPathologicalBackground --------------------
 class NonPathologicalBackground(db.Model):
