@@ -107,7 +107,19 @@ def login():
 @jwt_required()
 def private():
     current_user = User.query.get(get_jwt_identity())
-    return jsonify({"msg": "Acceso autorizado", "user": current_user.serialize()}), 200
+
+    # Buscar expediente médico (MedicalFile) del usuario
+    medical_file = MedicalFile.query.filter_by(user_id=current_user.id).first()
+    medical_file_id = medical_file.id if medical_file else None
+
+    # Serializar usuario
+    user_data = current_user.serialize()
+    
+    # Agregar medical_file_id al JSON que devuelve
+    user_data["medical_file_id"] = medical_file_id
+
+    return jsonify({"msg": "Acceso autorizado", "user": user_data}), 200
+
 
 # 04 EPT para obtener todos los usuarios (admin)
 @api.route('/users', methods=['GET'])
@@ -657,3 +669,42 @@ def get_snapshots(medical_file_id):
     } for s in snapshots]
 
     return jsonify(result), 200
+
+# 20 EPT para que el paciente obtenga sus snapshots
+@api.route('/patient/snapshots/<int:medical_file_id>', methods=['GET'])
+@patient_required
+def get_snapshots_patient(medical_file_id):
+    medical_file = MedicalFile.query.get(medical_file_id)
+    if not medical_file:
+        return jsonify({"error": "Expediente no encontrado"}), 404
+
+    snapshots = MedicalFileSnapshot.query.filter_by(medical_file_id=medical_file_id).order_by(MedicalFileSnapshot.created_at.desc()).all()
+    result = [s.serialize() for s in snapshots]
+
+    return jsonify(result), 200
+
+
+# 21 EPT para que el paciente confirme o rechace su archivo médico
+@api.route('/patient/confirm_file/<int:medical_file_id>', methods=['PUT'])
+@patient_required
+def confirm_file(medical_file_id):
+    data = request.get_json()
+    action = data.get("action")
+    
+    medical_file = MedicalFile.query.get(medical_file_id)
+    if not medical_file:
+        return jsonify({"error": "Expediente no encontrado"}), 404
+
+    if action == "confirm":
+        medical_file.file_status = FileStatus.confirmed
+        medical_file.confirmed_at = datetime.utcnow()
+        medical_file.confirmed_by_id = get_jwt_identity()
+    elif action == "reject":
+        medical_file.file_status = FileStatus.progress
+        medical_file.no_confirmed_at = datetime.utcnow()
+        medical_file.no_confirmed_by_id = get_jwt_identity()
+    else:
+        return jsonify({"error": "Acción no válida"}), 400
+
+    db.session.commit()
+    return jsonify({"message": f"Expediente {action} correctamente."}), 200
